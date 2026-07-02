@@ -45,3 +45,8 @@ runtime/imgui.ini
 
 
 src/poe_api_response.json
+
+# macOS native host build artifacts (tools/macos/*.sh)
+build/
+dist/
+runtime-macos-arm64/
