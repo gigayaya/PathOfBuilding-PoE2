@@ -71,6 +71,7 @@ Implicits: 1
 {tags:life}(3-6) Life Regeneration per second
 {variant:1}{tags:chaos,attack}Adds (2-3) to (4-5) Chaos Damage to Attacks
 {variant:2}{tags:chaos,attack}Adds (4-6) to (8-10) Chaos Damage to Attacks
+{variant:2}+(10-20)% of Armour also applies to Chaos Damage
 25% chance to Intimidate Enemies for 4 seconds on Hit
 ]],[[
 Blistering Bond
@@ -395,7 +396,6 @@ Implicits: 1
 Vigilant View
 Emerald Ring
 League: Dawn of the Hunt
-Requires Level 26
 Implicits: 1
 {tags:attack}+(120-160) to Accuracy Rating
 {tags:attack}+(100-150) to Accuracy Rating

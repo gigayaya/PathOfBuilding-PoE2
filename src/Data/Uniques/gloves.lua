@@ -24,7 +24,7 @@ Implicits: 1
 Dreadfist
 Bolstered Mitts
 League: Dawn of the Hunt
-(50-100)% increased Armour
+(60-100)% increased Armour
 (20-30)% increased Critical Damage Bonus
 Critical Hits inflict Impale
 Critical Hits cannot Extract Impale
@@ -106,6 +106,7 @@ Grants Skill: Level (1-20) Crushing Fear
 +(13-23) to Dexterity
 Adds (19-23) to (31-37) Chaos Damage to Attacks
 Gain 1 Fear Incarnate when you Cull a target
+Raven-Touched
 ]],[[
 Idle Hands
 Sectioned Bracers
@@ -333,7 +334,8 @@ Curses you inflict are reflected back to you
 [[
 Blessed Bonds
 Linen Wraps
-Source: Drops from unique{Zarokh, the Temporal}
+Source: No longer obtainable
+Requires Level 56
 +(60-100) to Evasion Rating
 +(30-50) to maximum Energy Shield
 Gain (25-35) Mana per enemy killed

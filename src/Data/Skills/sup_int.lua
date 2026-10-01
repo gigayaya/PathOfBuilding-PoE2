@@ -4,8 +4,8 @@
 -- Intelligence support gems
 -- Skill data (c) Grinding Gear Games
 --
-local skills, mod, flag, skill = ...
-
+			return function(skills, mod, flag, skill)
+---@cast mod SkillModFunction
 skills["SupportAbidingHexPlayer"] = {
 	name = "Abiding Hex",
 	description = "Supports Curse Skills you cast yourself. Supported Skills will consume Power Charges on use, gaining significant Curse duration if they do. Cannot Support Skills which consume Power Charges.",
@@ -1942,7 +1942,7 @@ skills["SupportAddedColdDamagePlayer"] = {
 }
 skills["SupportColdExposurePlayer"] = {
 	name = "Cold Exposure",
-	description = "Supports any skill that Hits enemies, causing it to inflict Exposure when it Critically Hits an enemy.",
+	description = "Supports any skill that Hits enemies, causing it to inflict Exposure when it inflicts Freeze.",
 	color = 3,
 	support = true,
 	requireSkillTypes = { SkillType.Attack, SkillType.Damage, SkillType.CrossbowAmmoSkill, },
@@ -2042,6 +2042,7 @@ skills["SupportCommandment"] = {
 	levels = {
 		[1] = { levelRequirement = 0, },
 	},
+	legacy = true,
 	statSets = {
 		[1] = {
 			label = "Commandment",
@@ -3085,7 +3086,7 @@ skills["SupportDiallasDesirePlayer"] = {
 }
 skills["SupportDoedresUndoingPlayer"] = {
 	name = "Doedre's Undoing",
-	description = "Supports Curse Skills. Supported Skills create an area which Curses Enemies within it, and spawns Witchtoads in that area. Witchtoads leap at eneimes that get close, and seek out Cursed enemies with higher aggression. Dark Consequences will be Triggered when they hit enemies with their leap, violently exploding the Witchtoad.",
+	description = "Supports Curse Skills. Supported Skills create an area which Curses Enemies within it, and spawns Witchtoads in that area. Witchtoads leap at enemies that get close, and seek out Cursed enemies with higher aggression. Dark Consequences will be Triggered when they hit enemies with their leap, violently exploding the Witchtoad.",
 	color = 3,
 	support = true,
 	requireSkillTypes = { SkillType.AppliesCurse, },
@@ -3181,7 +3182,14 @@ skills["ChaosFrogExplosionPlayer"] = {
 		[40] = { critChance = 7, levelRequirement = 0, cost = { Mana = 0, }, },
 	},
 			preDamageFunc = function(activeSkill, output)
-				activeSkill.skillData.hitTimeMultiplier = activeSkill.skillModList:Sum("BASE", activeSkill.skillCfg, "ToadSpawnInterval") / 1000
+				local interval = activeSkill.skillModList:Sum("BASE", activeSkill.skillCfg, "ToadSpawnInterval")
+				if interval == 0 then
+					-- An inactive support cannot spawn toads or deal damage, including ailments.
+					activeSkill.skillData.hitTimeMultiplier = math.huge
+					activeSkill.skillModList:NewMod("DealNoDamage", "FLAG", true, "Doedre's Undoing")
+				else
+					activeSkill.skillData.hitTimeMultiplier = interval / 1000
+				end
 			end,
 	statSets = {
 		[1] = {
@@ -8962,4 +8970,4 @@ skills["SupportZenithPlayerTwo"] = {
 			},
 		},
 	}
-}
+}			end

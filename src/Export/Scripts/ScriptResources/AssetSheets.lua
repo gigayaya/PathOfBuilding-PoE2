@@ -45,6 +45,11 @@ function assetSheets.addToSheet(sheet, icon, section, metadata)
 	if icon == nil or icon == "" then
 		return
 	end
+	-- check if the image is inset in the image
+	local rect = metadata.x == nil and assetSheets.uiImageRects[string.lower(icon)]
+	if rect then
+		metadata.x, metadata.y, metadata.w, metadata.h = rect.x, rect.y, rect.width, rect.height
+	end
 	sheet.files[icon] = sheet.files[icon] or { }
 	if sheet.files[icon][section] then
 		if metadata.alias then
@@ -99,7 +104,11 @@ function assetSheets.calculateDDSPack(sheet, fromBase, toBase, is4kEnabled)
 			for _, metadata in pairs(stack.sections) do
 				for _, meta in ipairs(metadata) do
 					local icon = meta.alias or stack.icon
-					ddsCoords[file][icon] = position
+					if meta.x and meta.y and meta.w and meta.h then
+						ddsCoords[file][icon] = { meta.x, meta.y, meta.w, meta.h, position }
+					else
+						ddsCoords[file][icon] = position
+					end
 				end
 			end
 			table.insert(stacks, stack.tex)
@@ -140,6 +149,17 @@ function assetSheets.parseUIImages(file)
 				images[name].height = tonumber(field)
 			end
 			index = index + 1
+		end
+	end
+	-- save image rects for each path. used when the image is not from edge to edge and needs to be
+	-- a crop of the image
+	assetSheets.uiImageRects = assetSheets.uiImageRects or {}
+	for _, img in pairs(images) do
+		local rect = assetSheets.uiImageRects[img.path]
+		if rect == nil then
+			assetSheets.uiImageRects[img.path] = img
+		elseif rect.x ~= img.x or rect.y ~= img.y or rect.width ~= img.width or rect.height ~= img.height then
+			assetSheets.uiImageRects[img.path] = false
 		end
 	end
 	return images
