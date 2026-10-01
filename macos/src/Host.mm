@@ -515,6 +515,38 @@ void stackIndexTexCoords(NativeImage* image, float stackIndex, float& s1, float&
     t4 = bottom;
 }
 
+// Map a texture coordinate relative to one stack cell (0-based index) onto the
+// grid-tiled atlas the cells were flattened into.
+void cellTexCoord(NativeImage* image, int index, float& s, float& t) {
+    const int cols = std::max(1, image->cols);
+    const float atlasW = static_cast<float>(std::max(1, image->atlasWidth));
+    const float atlasH = static_cast<float>(std::max(1, image->atlasHeight));
+    s = (static_cast<float>((index % cols) * image->cellWidth) + s * image->cellWidth) / atlasW;
+    t = (static_cast<float>((index / cols) * image->cellHeight) + t * image->cellHeight) / atlasH;
+}
+
+// Pixel source rectangle for cell-relative texture coords within one stack cell.
+// Negative extents (flipped coords) are normalised like sourceRectForImage.
+bool cellSourceRect(NativeImage* image, int index, float tcLeft, float tcTop, float tcRight, float tcBottom, SDL_FRect& src) {
+    if (!image || image->cellWidth <= 0 || image->cellHeight <= 0) {
+        return false;
+    }
+    const int cols = std::max(1, image->cols);
+    src.x = static_cast<float>((index % cols) * image->cellWidth) + tcLeft * image->cellWidth;
+    src.y = static_cast<float>((index / cols) * image->cellHeight) + tcTop * image->cellHeight;
+    src.w = (tcRight - tcLeft) * image->cellWidth;
+    src.h = (tcBottom - tcTop) * image->cellHeight;
+    if (src.w < 0.0f) {
+        src.x += src.w;
+        src.w = -src.w;
+    }
+    if (src.h < 0.0f) {
+        src.y += src.h;
+        src.h = -src.h;
+    }
+    return src.w > 0.0f && src.h > 0.0f;
+}
+
 // PoB's ddsMap sprites are drawn as DrawImage(handle, x, y, w, h, index) / the
 // quad equivalent, passing a single 1-based cell index instead of explicit
 // texture coordinates. Resolve that index to the cell's pixel rectangle in the
@@ -750,9 +782,10 @@ std::string applicationSupportPath() {
     }
 }
 
-std::vector<unsigned char> rawDeflate(const std::string& input) {
+std::vector<unsigned char> rawDeflate(const std::string& input, bool gzip = false) {
     z_stream stream{};
-    if (deflateInit(&stream, Z_BEST_COMPRESSION) != Z_OK) {
+    // windowBits 15 = zlib header; +16 = gzip header (Deflate(data, true))
+    if (deflateInit2(&stream, Z_BEST_COMPRESSION, Z_DEFLATED, gzip ? 15 + 16 : 15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
         return {};
     }
     stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(input.data()));
@@ -776,7 +809,8 @@ std::vector<unsigned char> rawInflate(const std::string& input) {
     z_stream stream{};
     stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(input.data()));
     stream.avail_in = static_cast<uInt>(input.size());
-    if (inflateInit(&stream) != Z_OK) {
+    // windowBits 15 + 32: accept either a zlib or a gzip header
+    if (inflateInit2(&stream, 15 + 32) != Z_OK) {
         return {};
     }
     size_t outSz = input.size() * 4;
@@ -1962,7 +1996,17 @@ int Host::l_DrawImage(lua_State* L) {
     if (image && image->texture) {
         SDL_FRect src{};
         bool hasSrc = false;
-        if (lua_gettop(L) >= 9 && !lua_isnil(L, 6)) {
+        const int argc = lua_gettop(L);
+        if (argc >= 10 && lua_isnumber(L, 10) && image->stackedAtlas) {
+            // DrawImage(handle, x, y, w, h, tcL, tcT, tcR, tcB, stackIdx[, mask]):
+            // texture coords are relative to the 1-based stack cell.
+            const int index = std::max(0, static_cast<int>(lua_tonumber(L, 10)) - 1);
+            if (cellSourceRect(image, index,
+                    static_cast<float>(luaL_optnumber(L, 6, 0.0)), static_cast<float>(luaL_optnumber(L, 7, 0.0)),
+                    static_cast<float>(luaL_optnumber(L, 8, 1.0)), static_cast<float>(luaL_optnumber(L, 9, 1.0)), src)) {
+                hasSrc = true;
+            }
+        } else if (argc >= 9 && !lua_isnil(L, 6)) {
             float tcLeft = static_cast<float>(luaL_optnumber(L, 6, 0.0));
             float tcTop = static_cast<float>(luaL_optnumber(L, 7, 0.0));
             float tcRight = static_cast<float>(luaL_optnumber(L, 8, 1.0));
@@ -1970,7 +2014,7 @@ int Host::l_DrawImage(lua_State* L) {
             if (sourceRectForImage(image, tcLeft, tcTop, tcRight, tcBottom, src)) {
                 hasSrc = true;
             }
-        } else if (lua_gettop(L) == 6 && lua_isnumber(L, 6)) {
+        } else if ((argc == 6 || argc == 7) && lua_isnumber(L, 6)) {
             // ddsMap sprite: 1-based cell index into a (possibly grid) atlas.
             const int index = std::max(0, static_cast<int>(lua_tonumber(L, 6)) - 1);
             if (spriteCellRect(image, index, src)) {
@@ -2015,7 +2059,14 @@ int Host::l_DrawImageQuad(lua_State* L) {
         float t3 = static_cast<float>(luaL_optnumber(L, 15, 0.0));
         float s4 = static_cast<float>(luaL_optnumber(L, 16, 0.0));
         float t4 = static_cast<float>(luaL_optnumber(L, 17, 0.0));
-        if (image->stackedAtlas && isStackIndexQuadDraw(s1, t1, s2, t2, s3, t3, s4, t4)) {
+        if (image->stackedAtlas && lua_gettop(L) >= 18 && lua_isnumber(L, 18)) {
+            // ... s1..t4, stackIdx[, mask]: texture coords are relative to the cell
+            const int index = std::max(0, static_cast<int>(lua_tonumber(L, 18)) - 1);
+            cellTexCoord(image, index, s1, t1);
+            cellTexCoord(image, index, s2, t2);
+            cellTexCoord(image, index, s3, t3);
+            cellTexCoord(image, index, s4, t4);
+        } else if (image->stackedAtlas && isStackIndexQuadDraw(s1, t1, s2, t2, s3, t3, s4, t4)) {
             stackIndexTexCoords(image, s1, s1, t1, s2, t2, s3, t3, s4, t4);
         }
         vertices[0].tex_coord.x = s1;
@@ -2030,7 +2081,7 @@ int Host::l_DrawImageQuad(lua_State* L) {
         std::memcpy(cmd.verts, vertices, sizeof(vertices));
         cmd.texture = image->texture;
         cmd.geomTextured = true;
-    } else if (image && image->texture && lua_gettop(L) == 10 && lua_isnumber(L, 10)) {
+    } else if (image && image->texture && (lua_gettop(L) == 10 || lua_gettop(L) == 11) && lua_isnumber(L, 10)) {
         // ddsMap sprite via quad: DrawImageQuad(handle, x1..y4, index) with a
         // single 1-based cell index instead of 8 explicit texture coordinates.
         float s1, t1, s2, t2, s3, t3, s4, t4;
@@ -2299,13 +2350,32 @@ int Host::l_SetWorkDir(lua_State* L) {
 int Host::l_MakeDir(lua_State* L) {
     std::error_code ec;
     fs::create_directories(luaL_checkstring(L, 1), ec);
-    return 0;
+    if (ec) {
+        lua_pushnil(L);
+        lua_pushstring(L, ec.message().c_str());
+        return 2;
+    }
+    lua_pushboolean(L, 1);
+    return 1;
 }
 
 int Host::l_RemoveDir(lua_State* L) {
+    // RemoveDir(path) only removes an empty directory; RemoveDir(path, true)
+    // removes it with its contents. Returns true, or nil + message.
+    const fs::path path = luaL_checkstring(L, 1);
     std::error_code ec;
-    fs::remove_all(luaL_checkstring(L, 1), ec);
-    return 0;
+    if (lua_toboolean(L, 2)) {
+        fs::remove_all(path, ec);
+    } else {
+        fs::remove(path, ec);
+    }
+    if (ec) {
+        lua_pushnil(L);
+        lua_pushstring(L, ec.message().c_str());
+        return 2;
+    }
+    lua_pushboolean(L, 1);
+    return 1;
 }
 
 namespace {
@@ -2477,7 +2547,7 @@ int Host::l_SpawnProcess(lua_State* L) {
 int Host::l_Deflate(lua_State* L) {
     size_t inputLen = 0;
     const char* input = lua_tolstring(L, 1, &inputLen);
-    auto data = rawDeflate(input ? std::string(input, inputLen) : std::string());
+    auto data = rawDeflate(input ? std::string(input, inputLen) : std::string(), lua_toboolean(L, 2) != 0);
     if (data.empty() && inputLen > 0) {
         lua_pushnil(L);
         lua_pushliteral(L, "Deflate failed");
